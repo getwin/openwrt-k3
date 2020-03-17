@@ -85,18 +85,16 @@ jobs:
           cd openwrt
           make -j1 V=s
 
-    - name: Try
-      if: failure()
-      run: find openwrt/bin/targets/ -name "*phicomm-k3*"
-
     - name: Assemble artifact
+      if: always()
       run: |
           rm -rf ./artifact/
           mkdir -p ./artifact/
           find openwrt/bin/targets/ -name "*phicomm-k3*" | xargs -i mv -f {} ./artifact/
 
     - name: Upload artifact
+      if: success()
       uses: actions/upload-artifact@master
       with:
-        name: OpenWrt firmware
+        name: OpenWrtFirmware
         path: ./artifact/
