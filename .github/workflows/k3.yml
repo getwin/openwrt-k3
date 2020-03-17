@@ -43,9 +43,9 @@ jobs:
 
     - name: Modify
       run: |
-        cd openwrt/package
-        sed -i 's/192.168.1.1/192.168.50.1/g' base-files/files/bin/config_generate
-        sed -i "s/'OpenWrt'/'Route'/g" base-files/files/bin/config_generate
+        cd openwrt
+        sed -i 's/192.168.1.1/192.168.50.1/g' package/base-files/files/bin/config_generate
+        sed -i "s/'OpenWrt'/'Route'/g" package/base-files/files/bin/config_generate
         cd package/lean/k3-brcmfmac4366c-firmware
         wget --no-check-certificate https://github.com/Hill-98/phicommk3-firmware/raw/master/brcmfmac4366c-pcie.bin.69027 -O brcmfmac4366c-pcie.bin
 
