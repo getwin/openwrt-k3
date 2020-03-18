@@ -84,6 +84,7 @@ jobs:
       run: |
           cd openwrt
           make -j1 V=s
+      continue-on-error: true
 
     - name: Assemble artifact
       if: always()
@@ -93,7 +94,7 @@ jobs:
           find openwrt/bin/targets/ -name "*phicomm-k3*" | xargs -i mv -f {} ./artifact/
 
     - name: Upload artifact
-      if: success()
+      if: always()
       uses: actions/upload-artifact@master
       with:
         name: OpenWrtFirmware
