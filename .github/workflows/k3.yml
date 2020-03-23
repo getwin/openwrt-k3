@@ -41,13 +41,16 @@ jobs:
         run: |
           cd openwrt
 
-          # luci-app-passwall
-          cat >> feeds.conf.default <<EOF
-          src-git lienol https://github.com/Lienol/openwrt-package
-          EOF
+          # # # luci-app-passwall
+          # # cat >> feeds.conf.default <<EOF
+          # # src-git lienol https://github.com/Lienol/openwrt-package
+          # # EOF
           
           cd package
           mkdir software
+
+          # luci-app-passwall
+          git clone https://github.com/Lienol/openwrt-package software/Lienol
 
           # luci-theme-argon
           git clone -b 19.07_stable https://github.com/jerrykuku/luci-theme-argon software/luci-theme-argon
@@ -112,6 +115,7 @@ jobs:
 
           rm -f .config
           cp ../config .config
+          # make defconfig
 
       - name: 下载编译所需源码
         run: |
