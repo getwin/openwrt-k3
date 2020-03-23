@@ -1,15 +1,6 @@
-#=================================================
-# https://github.com/P3TERX/Actions-OpenWrt
-# Description: Build OpenWrt using GitHub Actions
-# Lisence: MIT
-# Author: P3TERX
-# Blog: https://p3terx.com
-#=================================================
-name: K3-1907
+name: 编译 OpenWrt-k3
 
 on:
-#   schedule:
-#     - cron: 0 20 * * *
   push:
     branches: 
       - master
@@ -21,12 +12,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v1
+      - name: 校验本地文件
+        uses: actions/checkout@v1
 
-    - name: Initialization environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
+      - name: 安装编译环境
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
           sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d
           sudo -E apt-get -y purge azure-cli ghc* zulu* hhvm llvm* firefox google* dotnet* powershell openjdk* mysql* php*
           sudo -E apt-get -qq update
@@ -35,67 +27,122 @@ jobs:
           sudo -E apt-get -y autoremove --purge
           sudo -E apt-get clean
 
-    - name: Clone source code
-      env: 
-        REPO_URL: https://github.com/Lienol/openwrt
-        REPO_BRANCH: dev-19.07
-      run: git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
+      - name: 下载源码
+        env:
+          VER: v19.07.2
+          URL: https://github.com/openwrt/openwrt/archive/
+        run: |
+          wget -q ${URL}${VER}.tar.gz
+          tar -zxf ${VER}.tar.gz
+          rm ${VER}.tar.gz
+          mv openwrt-* openwrt
 
-    - name: Modify
-      run: |
-        cd openwrt
-        sed -i 's/192.168.1.1/192.168.50.1/g' package/base-files/files/bin/config_generate
-        sed -i "s/'OpenWrt'/'Route'/g" package/base-files/files/bin/config_generate
-        cd package/lean/k3-brcmfmac4366c-firmware
-        wget --no-check-certificate https://github.com/Hill-98/phicommk3-firmware/raw/master/brcmfmac4366c-pcie.bin.69027 -O brcmfmac4366c-pcie.bin
-
-    - name: Update feeds
-      run: cd openwrt && ./scripts/feeds update -a
-
-    - name: Install feeds
-      run: cd openwrt && ./scripts/feeds install -a
-    
-    - name: Costom configure file
-      run: |
+      - name: 自定义扩展文件
+        run: |
           cd openwrt
+
+          # luci-app-passwall
+          cat >> feeds.conf.default <<EOF
+          src-git lienol https://github.com/Lienol/openwrt-package
+          EOF
+          
+          cd package
+          mkdir software
+
+          # luci-theme-argon
+          git clone -b 19.07_stable https://github.com/jerrykuku/luci-theme-argon software/luci-theme-argon
+
+          # UnblockNeteaseMusicGo (包含后端和前端)
+          git clone https://github.com/cnsilvan/luci-app-unblockneteasemusic software/unblock-neteasemusic-go
+          ## $(STAGING_DIR_HOST)/bin/upx --lzma --best $(GO_PKG_BUILD_BIN_DIR)/UnblockNeteaseMusic
+          sed -i '/.*upx /d' software/unblock-neteasemusic-go/UnblockNeteaseMusic/Makefile
+
+          # smartdns
+          git clone https://github.com/getwin/openwrt-smartdns software/smartdns
+          ## git clone https://github.com/pymumu/luci-app-smartdns software/luci-app-smartdns
+          git clone -b dev-19.07 https://github.com/tty228/luci-app-smartdns software/luci-app-smartdns
+          # fix for compiling
+          sed -i 's/\.\.\/\.\.\/luci\.mk/\$(TOPDIR)\/feeds\/luci\/luci\.mk/g' software/luci-app-smartdns/Makefile
+
+          # KMS
+          git clone https://github.com/flytosky-f/openwrt-vlmcsd software/vlmcsd
+          # git clone https://github.com/flytosky-f/luci-app-vlmcsd software/luci-app-vlmcsd
+          svn checkout https://github.com/coolsnowwolf/lede/trunk/package/lean/luci-app-vlmcsd software/luci-app-vlmcsd
+
+          # udp2raw-tunnel
+          git clone https://github.com/getwin/openwrt-udp2raw software/udp2raw-tunnel
+          git clone https://github.com/qq523407234/luci-app-udp2raw software/luci-app-udp2raw
+          
+          # # OpenAppFilter
+          # git clone https://github.com/destan19/OpenAppFilter software/OpenAppFilter
+          
+          # flowoffload (依赖 pdnsd-alt)
+          svn checkout https://github.com/coolsnowwolf/lede/trunk/package/lean/shortcut-fe software/shortcut-fe
+          svn checkout https://github.com/coolsnowwolf/lede/trunk/package/lean/luci-app-sfe software/luci-app-sfe
+          svn checkout https://github.com/coolsnowwolf/lede/trunk/package/lean/luci-app-flowoffload software/luci-app-flowoffload
+
+          # k3screenctrl
+          svn checkout https://github.com/coolsnowwolf/lede/trunk/package/lean/k3screenctrl software/k3screenctrl
+
+          # k3-wifi-firmware
+          svn checkout https://github.com/coolsnowwolf/lede/trunk/package/lean/k3-brcmfmac4366c-firmware software/k3-brcmfmac4366c-firmware
+          pushd software/k3-brcmfmac4366c-firmware/files/lib/firmware/brcm
+          wget --no-check-certificate https://github.com/Hill-98/phicommk3-firmware/raw/master/brcmfmac4366c-pcie.bin.69027 -O brcmfmac4366c-pcie.bin
+          popd
+
+      - name: 更新扩展环境
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: 自定义配置
+        run: |
+          cd openwrt
+          rm -f ./.config*
+          touch ./.config
+
+          # 默认ip 主机名
+          sed -i 's/192.168.1.1/192.168.50.1/g' package/base-files/files/bin/config_generate
+          sed -i "s/'OpenWrt'/'Route'/g" package/base-files/files/bin/config_generate
+
+          # update golang
+          rm -rf feeds/packages/lang/golang
+          svn checkout https://github.com/openwrt/packages/trunk/lang/golang feeds/packages/lang/golang
+
           rm -f .config
           cp ../config .config
-          
-    - name: Make Defconfig
-      run: |
-          cd openwrt
-          make defconfig
 
-    - name: Make download
-      run: |
+      - name: 下载编译所需源码
+        run: |
           cd openwrt
           make download -j8
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
-    - name: Multi-thread compile
-      run: |
+      - name: 进行多线程编译
+        run: |
           cd openwrt
           echo -e "$(nproc) thread build."
           make -j$(nproc)
 
-    - name: Single-thread compile
-      if: failure()
-      run: |
-          cd openwrt
-          make -j1 V=s
-      continue-on-error: true
+      - name: 尝试单线程编译
+        if: failure()
+        run: |
+            cd openwrt
+            make -j1 V=s
+        continue-on-error: true
 
-    - name: Assemble artifact
-      if: always()
-      run: |
-          rm -rf ./artifact/
-          mkdir -p ./artifact/
-          find openwrt/bin/targets/ -name "*phicomm-k3*" | xargs -i mv -f {} ./artifact/
+      - name: 提取文件
+        if: always()
+        run: |
+          rm -rf ./firmware/
+          mkdir -p ./firmware/
+          find ./openwrt/bin/targets/ -name "*phicomm-k3-*" | xargs -i mv -f {} ./firmware/
 
-    - name: Upload artifact
-      if: always()
-      uses: actions/upload-artifact@master
-      with:
-        name: OpenWrtFirmware
-        path: ./artifact/
+      - name : 上传文件
+        if: always()
+        uses: actions/upload-artifact@master
+        with:
+          name: OpenWrtFirmware
+          path: firmware
